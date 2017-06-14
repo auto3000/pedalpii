@@ -4,7 +4,6 @@ import sys
 import os.path
 import tornado.ioloop
 import tornado.web
-import RPi.GPIO as GPIO
 from time import sleep
 from tornado.iostream import PipeIOStream
 from tornado import ioloop, iostream
@@ -20,6 +19,32 @@ from tornado.queues import Queue
 
 #mod-ui hmi server port
 PORT = 9999
+
+class FakeGPIO(object):
+	def output(self, a,b):
+		pass
+
+	def cleanup(self, x):
+		pass
+
+	def setwarnings(self, x):
+		pass
+
+	def input(self, x):
+		pass
+
+	def setmode(self, x):
+		pass
+
+	def add_event_detect(self, x, y, **args):
+		pass
+
+
+try:
+	import RPi.GPIO as GPIO
+except ImportError:
+	print("No RPi.GPIO detected. pedalpII is not connected to physical devices but console is ready." )
+	GPIO = FakeGPIO
 
 #Initialize Raspberry PI GPIO
 GPIO.setmode(GPIO.BOARD)
@@ -86,11 +111,10 @@ class LCD:
 	LCD_5x10DOTS 		= 0x04
 	LCD_5x8DOTS 		= 0x00
 
-	def __init__(self, pin_rs=27, pin_e=22, pins_db=[25, 24, 23, 18], GPIO = None):
+	def __init__(self, pin_rs=27, pin_e=22, pins_db=[25, 24, 23, 18], MyGPIO = None):
 		# Emulate the old behavior of using RPi.GPIO if we haven't been given
 		# an explicit GPIO interface to use
-		if not GPIO:
-			import RPi.GPIO as GPIO
+		if not MyGPIO:
 			self.GPIO = GPIO
 			self.pin_rs = pin_rs
 			self.pin_e = pin_e
@@ -107,7 +131,8 @@ class LCD:
 
 			for pin in self.pins_db:
 				self.GPIO.setup(pin, GPIO.OUT)
-
+		else:
+			self.GPIO = MyGPIO
 		self.write4bits(0x33) # initialization
 		self.write4bits(0x32) # initialization
 		self.write4bits(0x28) # 2 line 5x7 matrix
@@ -251,15 +276,9 @@ class LCD:
 		self.GPIO.cleanup(self.used_gpio)
 
 
-class FakeGPIO(object):
-	def output(self, a,b):
-		pass
-
-	def cleanup(self, x):
-		pass
 
 class FakeLCD(LCD):
-	def __init__(self, pin_rs=27, pin_e=22, pins_db=[25, 24, 23, 18], GPIO = None):
+	def __init__(self, pin_rs=27, pin_e=22, pins_db=[25, 24, 23, 18], MyGPIO = None):
 		self.GPIO = FakeGPIO()
 		self.pin_rs = None
 		self.pin_e = None
