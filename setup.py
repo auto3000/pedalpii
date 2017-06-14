@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
  name = "pedalpii",
  version = "1.0",
- py_modules = [ 'pedalpII' ],
+ packages = [ 'pedalpII' ],
 
 # pedalpii is primarly intended for raspberrypi* platform and this program really
 # relies on RPi.GPIO. But user can use this program on different target in a

@@ -763,7 +763,7 @@ class RotaryEncoderShell(object):
 		self.readNext(None)
 		return;
 
-if __name__ == "__main__":
+def main():
 	global lcd, encoder, main_loop, rshell, ssocket
 	hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
@@ -788,3 +788,6 @@ if __name__ == "__main__":
 		GPIO.cleanup()
 		lcd.clear()
 		lcd.destroy()
+
+if __name__ == "__main__":
+	main()
