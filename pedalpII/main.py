@@ -26,7 +26,7 @@ class FakeGPIO(object):
 	def output(self, a,b):
 		pass
 
-	def cleanup(self, x):
+	def cleanup(self, *args):
 		pass
 
 	def setwarnings(self, x):
@@ -426,7 +426,6 @@ class FakeRotaryEncoder(RotaryEncoder):
 # End of RotaryEncoder class
 
 def asyncRotaryEncoderCallback(event):
-	global ssocket
 	print("JFD stream.write for event=", event)
 	return
 
@@ -720,6 +719,7 @@ class RotaryEncoderShell(object):
 		self.controller = controller
 		self.consolein = PipeIOStream(sys.stdin.fileno())
 		self.consoleout = PipeIOStream(sys.stdout.fileno())
+		self.communicationLayer = None
 		self.setup()
 		return
 
@@ -747,36 +747,21 @@ class RotaryEncoderShell(object):
 # (0, 0, 1, 0): '/hmi/footswitch1'}
 
 	def readNext(self, data):
-		global ssocket
 		if data:
 			print (">Read on console (next/prev/up/down/long): ", data)
 			if data.startswith(b"next"):
-				#data = data[:-1] +  b"\0"
-				#print (">>send banks")
-				#ssocket.stream.write(b"banks\0");
-				#print (">>send pedalboards 0")
-				#ssocket.stream.write(b"pedalboards 0\0");
-				#print (">>send pedalboard 0 2")
-				#ssocket.stream.write(b"pedalboard 0 2\0");
-				controller.controlShift(1)
-				# control_next 0 0 2 0
-				#ssocket.stream.write(b"jack_cpu_load\0");
-			#	ssocket.stream.write(b"tuner off\0");
-			#	ssocket.stream.write(b"tuner on\0"); control_get 0 gain over
-				#print (">>send control_get 0 \":bypass\"")
-				#ssocket.stream.write(b"control_get 0 \":bypass\"\0");
-			#	ssocket.stream.write(b"control_get 9995 :presets\0");
+				self.controller.controlShift(1)
 			elif data.startswith(b"prev"):
-				controller.controlShift(-1)
+				self.controller.controlShift(-1)
 			elif data.startswith(b"up"):
-				controller.controlUp()
+				self.controller.controlUp()
 			elif data.startswith(b"down"):
-				controller.controlDown()
+				self.controller.controlDown()
 			elif data.startswith(b"long"):
-				controller.controlLong()
+				self.controller.controlLong()
 			else:
 				data = data[:-1] +  b"\0"
-				ssocket.socket_write(data);
+				self.communicationLayer.socket_write(data);
 
 		self.consolein.read_until(b'\n', self.readNext)
 
@@ -785,7 +770,7 @@ class RotaryEncoderShell(object):
 		return;
 
 def main():
-	global lcd, encoder, main_loop, rshell, ssocket
+	global main_loop
 	hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
 	model = PedalModel()
@@ -796,7 +781,7 @@ def main():
 	ssocket = SocketService(model, controller)
 	model.communicationLayer = ssocket
 	model.stateMachineController = controller
-	#sleep(3)
+	rshell.communicationLayer = ssocket
 	try:
 		main_loop = tornado.ioloop.IOLoop.instance()
 		print("Tornado Server started")
