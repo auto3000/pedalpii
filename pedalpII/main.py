@@ -21,6 +21,8 @@ from tornado.queues import Queue
 PORT = 9999
 
 class FakeGPIO(object):
+	BOARD = -1
+
 	def output(self, a,b):
 		pass
 
@@ -33,6 +35,7 @@ class FakeGPIO(object):
 	def input(self, x):
 		pass
 
+	@classmethod
 	def setmode(self, x):
 		pass
 
