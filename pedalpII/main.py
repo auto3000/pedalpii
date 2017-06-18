@@ -625,9 +625,9 @@ class PedalModel(object):
 	def set_initial_state(self, bank_id, pedalboard_id, pedalboards):
 		self.bank_id = int(bank_id)
 		self.pedalboard_id = 0 #Force pedalboard to first entry
-		self.pedalboards_len = int(pedalboard_id) - 1 # ignore the last entry DEFAULT
+		self.pedalboards_len = max(int(pedalboard_id) - 1, 1) # ignore the last entry DEFAULT if we have more than one pedalboard.
 		self.pedalboards = []
-		for i in range(0, self.pedalboards_len + 1): # recopy only text elements
+		for i in range(0, self.pedalboards_len): # recopy only text elements
 			self.pedalboards = self.pedalboards + [ pedalboards[2*i] ]
 		self.change_pedalboards(0)
 		return
