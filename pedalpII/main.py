@@ -21,6 +21,8 @@ from tornado.queues import Queue
 PORT = 9999
 
 class FakeGPIO(object):
+	BOARD = -1
+
 	def output(self, a,b):
 		pass
 
@@ -44,7 +46,7 @@ try:
 	import RPi.GPIO as GPIO
 except ImportError:
 	print("No RPi.GPIO detected. pedalpII is not connected to physical devices but console is ready." )
-	GPIO = FakeGPIO
+	GPIO = FakeGPIO()
 
 #Initialize Raspberry PI GPIO
 GPIO.setmode(GPIO.BOARD)
