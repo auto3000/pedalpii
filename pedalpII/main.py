@@ -35,6 +35,7 @@ class FakeGPIO(object):
 	def input(self, x):
 		pass
 
+	@classmethod
 	def setmode(self, x):
 		pass
 
