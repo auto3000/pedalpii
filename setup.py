@@ -9,7 +9,11 @@ setup(
 # relies on RPi.GPIO. But user can use this program on different target in a
 # degraded mode.
  install_requires = ['tornado'],
-
+ entry_points = {
+  'console_scripts': [
+   'pedalpII = pedalpII.main:main',
+  ]
+ },
  author="auto3000",
  author_email = "auto3000@users.noreply.github.com",
  description = "Physical (button/LCD) and console interfaces for the pedalpii.",
