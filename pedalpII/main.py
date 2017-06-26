@@ -637,7 +637,6 @@ class SocketService(object):
 	def __init__(self, pedalmodel, stateMachineController):
 		self.pedalmodel = pedalmodel
 		self.stateMachineController = stateMachineController
-		self.setup()
 		RpiProtocol.register_cmd_callback("ping", self.ping)
 		RpiProtocol.register_cmd_callback("ui_con", self.ui_connected)
 		RpiProtocol.register_cmd_callback("ui_dis", self.ui_disconnected)
@@ -683,32 +682,43 @@ class SocketService(object):
 
 	def error_run_callback(self, result):
 		if result == True:
-			self.stream.write(b'resp 0\0', socket_write_success)
+			self.socket_write(b'resp 0\0')
 		else:
 			print("error_run_callback: " + str(result))
-			self.stream.write(b'resp -1\0', socket_write_success)
+			self.socket_write(b'resp -1\0')
 			#raise ProtocolError("error_run_callback: %s" % (result))
 
-	@gen.coroutine
-	def socketService(self,data):
-		if data:
-			print(">socketService read: ", data)
-			p = RpiProtocol(data.decode('utf-8'))
-			if not p.is_resp():
-				p.run_cmd(self.error_run_callback)
-		self.stream.read_until(b'\0', callback=self.socketService)
+	def setup(self, ioloop):
+		ioloop.spawn_callback(self.connectHMILoop)
 		return
 
 	@gen.coroutine
-	def setup(self):
-		self.stream = yield TCPClient().connect("localhost", PORT)
-		self.socketService(None)
-		return self.stream
+	def connectHMILoop(self):
+		while True:
+			client = TCPClient()
+			try:
+				print("Try to connect to HMI service port=", PORT)
+				self.stream = yield client.connect("localhost", PORT)
+				print("Connected to HMI")
+				while True:
+					data = yield self.stream.read_until(b'\0')
+					print(">socketService read: ", data)
+					p = RpiProtocol(data.decode('utf-8'))
+					if not p.is_resp():
+						p.run_cmd(self.error_run_callback)
+			except:
+				print("Connection error: ", sys.exc_info()[0])
+			result = yield gen.sleep(3)
+		return
 
 	@gen.coroutine
 	def socket_write(self, str):
 		print("> send: %s" % str )
-		self.stream.write(str, socket_write_success)
+		try:
+			self.stream.write(str, socket_write_success)
+		except:
+			print("socket_write failure error:", sys.exc_info()[0])
+		return
 
 	def set_pedalboard(self, bank_id, pedalboard_id):
 		self.socket_write("pedalboard {0} {0}\0".format(bank_id, pedalboard_id).encode('ascii'));
@@ -788,6 +798,7 @@ def main():
 		print("Tornado Server started")
 		controller.setup(main_loop)
 		lcd.setup(main_loop)
+		ssocket.setup(main_loop)
 		main_loop.start()
 	except:
 		print("Exception triggered - Tornado Server stopped.")
