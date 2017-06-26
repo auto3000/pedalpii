@@ -33,7 +33,7 @@ Before running the script, you need to activate your virtualenv
 
 Run the script:
 
-    $ ./pedalpII.py
+    $ ./python-pedalpII.py
 
 ## History
 pedalpII is a complete software rebase from pedalpI (aka pedalpi v1) to cooperate with MOD infrastructure (https://github.com/moddevices).
