@@ -637,6 +637,7 @@ class SocketService(object):
 	def __init__(self, pedalmodel, stateMachineController):
 		self.pedalmodel = pedalmodel
 		self.stateMachineController = stateMachineController
+		self.stream = None
 		RpiProtocol.register_cmd_callback("ping", self.ping)
 		RpiProtocol.register_cmd_callback("ui_con", self.ui_connected)
 		RpiProtocol.register_cmd_callback("ui_dis", self.ui_disconnected)
@@ -707,6 +708,7 @@ class SocketService(object):
 					if not p.is_resp():
 						p.run_cmd(self.error_run_callback)
 			except:
+				self.stream = None
 				print("Connection error: ", sys.exc_info()[0])
 			result = yield gen.sleep(3)
 		return
@@ -715,7 +717,10 @@ class SocketService(object):
 	def socket_write(self, str):
 		print("> send: %s" % str )
 		try:
-			self.stream.write(str, socket_write_success)
+			if self.stream:
+				self.stream.write(str, socket_write_success)
+			else:
+				print("socket_write HMI is not connected")
 		except:
 			print("socket_write failure error:", sys.exc_info()[0])
 		return
@@ -726,10 +731,10 @@ class SocketService(object):
 
 
 class RotaryEncoderShell(object):
-	def __init__(self, controller):
+	def __init__(self, controller, inStream, outStream):
 		self.controller = controller
-		self.consolein = PipeIOStream(sys.stdin.fileno())
-		self.consoleout = PipeIOStream(sys.stdout.fileno())
+		self.consolein = inStream
+		self.consoleout = outStream
 		self.communicationLayer = None
 		self.setup()
 		return
@@ -759,7 +764,7 @@ class RotaryEncoderShell(object):
 
 	def readNext(self, data):
 		if data:
-			print (">Read on console (next/prev/up/down/long): ", data)
+			self.consoleout.write(bytes('>Read on console (next/prev/up/down/long): ', 'utf-8'), socket_write_success)
 			if data.startswith(b"next"):
 				self.controller.controlShift(1)
 			elif data.startswith(b"prev"):
@@ -773,7 +778,6 @@ class RotaryEncoderShell(object):
 			else:
 				data = data[:-1] +  b"\0"
 				self.communicationLayer.socket_write(data);
-
 		self.consolein.read_until(b'\n', self.readNext)
 
 	def setup(self):
@@ -787,7 +791,7 @@ def main():
 	model = PedalModel()
 	view  = PedalView(model, lcd)
 	controller = PedalController(model, view)
-	rshell = RotaryEncoderShell(controller)
+	rshell = RotaryEncoderShell(controller, PipeIOStream(sys.stdin.fileno()), PipeIOStream(sys.stdout.fileno()))
 	encoder = FakeRotaryEncoder(0, 0, 0, rotaryEncoderCallback)
 	ssocket = SocketService(model, controller)
 	model.communicationLayer = ssocket
