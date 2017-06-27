@@ -17,8 +17,8 @@ import csv
 import traceback
 from tornado.queues import Queue
 
-#mod-ui hmi server port
 HMI_SOCKET_PORT = 9999
+NETCONSOLE_CONSOLE_PORT = 9998
 
 class FakeGPIO(object):
 	BOARD = -1
@@ -764,7 +764,6 @@ class RotaryEncoderShell(object):
 
 	def readNext(self, data):
 		if data:
-			self.consoleout.write(bytes('>Read on console (next/prev/up/down/long): ', 'utf-8'), socket_write_success)
 			if data.startswith(b"next"):
 				self.controller.controlShift(1)
 			elif data.startswith(b"prev"):
@@ -775,14 +774,47 @@ class RotaryEncoderShell(object):
 				self.controller.controlDown()
 			elif data.startswith(b"long"):
 				self.controller.controlLong()
+			elif data.startswith(b"exit"):
+				self.consolein.close()
+				self.consoleout.close()
+				return #goto exit
 			else:
-				data = data[:-1] +  b"\0"
+				data = data[:-1]
+				data = data.rstrip()
+				data = data +  b"\0"
 				self.communicationLayer.socket_write(data);
+		self.consoleout.write(bytes('>Read on console (next/prev/up/down/long): ', 'utf-8'), socket_write_success)
 		self.consolein.read_until(b'\n', self.readNext)
 
 	def setup(self):
 		self.readNext(None)
 		return;
+
+class NetConsoleServer(TCPServer):
+	def __init__(self, my_ioloop, controller, ssocket):
+		super().__init__(my_ioloop)
+		self.controller = controller
+		self.communicationLayer = ssocket
+		return
+
+	def setup(self):
+		try:
+			print("NetConsole listens to port %d" % NETCONSOLE_CONSOLE_PORT)
+			self.listen(NETCONSOLE_CONSOLE_PORT)
+		except Exception as e:
+			print("ERROR: Failed to open netconsole socket port, error was: %s" % e)
+		return
+
+	@gen.coroutine
+	def handle_stream(self, stream, address):
+		print('[NetConsoleServer] connection from %s' % repr(address))
+		netshell = RotaryEncoderShell(self.controller, stream, stream)
+		netshell.communicationLayer = self.communicationLayer
+		return
+
+
+
+
 
 def main():
 	global main_loop
@@ -803,6 +835,8 @@ def main():
 		controller.setup(main_loop)
 		lcd.setup(main_loop)
 		ssocket.setup(main_loop)
+		netconsole = NetConsoleServer(main_loop, controller, ssocket)
+		netconsole.setup()
 		main_loop.start()
 	except:
 		print("Exception triggered - Tornado Server stopped.")
