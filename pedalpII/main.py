@@ -18,7 +18,7 @@ import traceback
 from tornado.queues import Queue
 
 #mod-ui hmi server port
-PORT = 9999
+HMI_SOCKET_PORT = 9999
 
 class FakeGPIO(object):
 	BOARD = -1
@@ -698,8 +698,8 @@ class SocketService(object):
 		while True:
 			client = TCPClient()
 			try:
-				print("Try to connect to HMI service port=", PORT)
-				self.stream = yield client.connect("localhost", PORT)
+				print("Try to connect to HMI service port=", HMI_SOCKET_PORT)
+				self.stream = yield client.connect("localhost", HMI_SOCKET_PORT)
 				print("Connected to HMI")
 				while True:
 					data = yield self.stream.read_until(b'\0')
