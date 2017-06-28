@@ -23,6 +23,7 @@ HMI_SOCKET_PORT = 9999
 NETCONSOLE_CONSOLE_PORT = 9998
 
 global logger
+global GPIO
 
 
 def setupLogging():
@@ -79,15 +80,17 @@ class FakeGPIO(object):
 	def add_event_detect(self, x, y, **args):
 		pass
 
+def setupGPIOmode():
+	global GPIO
+	try:
+		import RPi.GPIO as GPIO
+	except ImportError:
+		logger.info("No RPi.GPIO detected. pedalpII is not connected to physical devices but console is ready." )
+		GPIO = FakeGPIO()
 
-try:
-	import RPi.GPIO as GPIO
-except ImportError:
-	print("No RPi.GPIO detected. pedalpII is not connected to physical devices but console is ready." )
-	GPIO = FakeGPIO()
-
-#Initialize Raspberry PI GPIO
-GPIO.setmode(GPIO.BOARD)
+	#Initialize Raspberry PI GPIO
+	GPIO.setmode(GPIO.BOARD)
+	return
 
 # #define LCD_SETCGRAMADDR 0x40
 #// Allows us to fill the first 8 CGRAM locations
@@ -152,6 +155,7 @@ class LCD:
 	LCD_5x8DOTS 		= 0x00
 
 	def __init__(self, pin_rs=27, pin_e=22, pins_db=[25, 24, 23, 18], MyGPIO = None):
+		global GPIO
 		# Emulate the old behavior of using RPi.GPIO if we haven't been given
 		# an explicit GPIO interface to use
 		if not MyGPIO:
@@ -373,6 +377,7 @@ class RotaryEncoder:
 
 	# Initialise rotary encoder object
 	def __init__(self,pinA,pinB,button,callback):
+		global GPIO
 		self.pinA = pinA
 		self.pinB = pinB
 		self.button = button
@@ -854,8 +859,9 @@ class NetConsoleServer(TCPServer):
 
 
 def main():
-	global main_loop
+	global main_loop, GPIO
 	setupLogging()
+	setupGPIOmode()
 	hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
 	model = PedalModel()
