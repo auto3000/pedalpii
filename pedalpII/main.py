@@ -16,9 +16,37 @@ from tornado import gen
 import csv
 import traceback
 from tornado.queues import Queue
+import logging
+import logging.handlers
 
 HMI_SOCKET_PORT = 9999
 NETCONSOLE_CONSOLE_PORT = 9998
+
+global logger
+
+
+def setupLogging():
+	global logger
+	access_log = logging.getLogger("tornado.access")
+	app_log = logging.getLogger("tornado.application")
+	gen_log = logging.getLogger("tornado.general")
+	logger = logging.getLogger("pedalpII")
+	access_log.setLevel(logging.DEBUG)
+	app_log.setLevel(logging.DEBUG)
+	gen_log.setLevel(logging.DEBUG)
+	logger.setLevel(logging.DEBUG)
+
+	syslogHandler = logging.handlers.SysLogHandler('/dev/log')
+	syslogFormatter = logging.Formatter('%(name)s %(levelname)s %(funcName)s:%(lineno)d: %(message)s')
+	syslogHandler.formatter = syslogFormatter
+
+	logger.addHandler(syslogHandler)
+	access_log.addHandler(syslogHandler)
+	app_log.addHandler(syslogHandler)
+	gen_log.addHandler(syslogHandler)
+
+	logger.info("Logging to syslog is ready.")
+	return
 
 class FakeGPIO(object):
 	BOARD = -1
@@ -818,6 +846,7 @@ class NetConsoleServer(TCPServer):
 
 def main():
 	global main_loop
+	setupLogging()
 	hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
 	model = PedalModel()
