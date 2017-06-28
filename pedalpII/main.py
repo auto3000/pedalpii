@@ -14,7 +14,6 @@ from tornado.locks import Lock
 from tornado.iostream import StreamClosedError
 from tornado import gen
 import csv
-import traceback
 from tornado.queues import Queue
 import logging
 import logging.handlers
@@ -751,7 +750,7 @@ class SocketService(object):
 						p.run_cmd(self.error_run_callback)
 			except:
 				self.stream = None
-				logger.error("Connection error: %s" % sys.exc_info()[0])
+				logger.error("Connection error", exc_info=True)
 			result = yield gen.sleep(3)
 		return
 
@@ -764,7 +763,7 @@ class SocketService(object):
 			else:
 				logger.error("socket_write HMI is not connected")
 		except:
-			logger.error("socket_write failure error:", sys.exc_info()[0])
+			logger.error("socket_write failure error", exc_info=True)
 		return
 
 	def set_pedalboard(self, bank_id, pedalboard_id):
@@ -883,8 +882,7 @@ def main():
 		netconsole.setup()
 		main_loop.start()
 	except:
-		logger.error("Exception triggered - Tornado Server stopped.")
-		traceback.print_exc()
+		logger.error("Exception triggered - Tornado Server stopped.", exc_info=True)
 		GPIO.cleanup()
 		lcd.clear()
 		lcd.destroy()
