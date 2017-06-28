@@ -36,6 +36,10 @@ def setupLogging():
 	gen_log.setLevel(logging.DEBUG)
 	logger.setLevel(logging.DEBUG)
 
+	consoleHandler = logging.StreamHandler(sys.stdout)
+	consoleFormatter = logging.Formatter('%(name)s %(levelname)s %(funcName)s:%(lineno)d: %(message)s')
+	consoleHandler.formatter = consoleFormatter
+
 	syslogHandler = logging.handlers.SysLogHandler('/dev/log')
 	syslogFormatter = logging.Formatter('%(name)s %(levelname)s %(funcName)s:%(lineno)d: %(message)s')
 	syslogHandler.formatter = syslogFormatter
@@ -45,7 +49,12 @@ def setupLogging():
 	app_log.addHandler(syslogHandler)
 	gen_log.addHandler(syslogHandler)
 
-	logger.info("Logging to syslog is ready.")
+	logger.addHandler(consoleHandler)
+	access_log.addHandler(consoleHandler)
+	app_log.addHandler(consoleHandler)
+	gen_log.addHandler(consoleHandler)
+
+	logger.info("Logging to syslog and console is ready.")
 	return
 
 class FakeGPIO(object):
