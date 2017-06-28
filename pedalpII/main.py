@@ -308,7 +308,7 @@ class LCD:
 
 	def message(self, text):
 		# Send string to LCD. Newline wraps to second line
-		print("message:\n%s" % text)
+		logger.debug("message:\n%s" % text)
 		for char in text:
 			if char == '\n':
 				self.write4bits(0xC0) # next line
@@ -316,7 +316,7 @@ class LCD:
 				self.write4bits(ord(char),True)
 
 	def destroy(self):
-		print("clean up used_gpio")
+		logger.info("clean up used_gpio")
 		self.GPIO.cleanup(self.used_gpio)
 
 
@@ -345,7 +345,7 @@ class LCDProxyQueue(object):
 		while True:
 			item = yield self.queue.get()
 			try:
-				print("len of %s %d" % (item[0], len(item)))
+				logger.debug("len of %s %d" % (item[0], len(item)))
 				item[1](*item[2:]) #item[1:]
 				#print('Doing work on %s' % func)
 			finally:
@@ -469,12 +469,12 @@ class FakeRotaryEncoder(RotaryEncoder):
 # End of RotaryEncoder class
 
 def asyncRotaryEncoderCallback(event):
-	print("JFD stream.write for event=", event)
+	logger.info("JFD stream.write for event=%s" % str(event))
 	return
 
 
 def rotaryEncoderCallback(event):
-	print("rotaryEncoderCallback with ", event)
+	logger.info("rotaryEncoderCallback with event=%s" % str(event))
 	main_loop.add_callback(callback=lambda: asyncRotaryEncoderCallback(event))
 	return
 
@@ -521,7 +521,7 @@ class RpiProtocol(object):
             return
 
         if not self.cmd in self.COMMANDS_FUNC.keys():
-            print(str(self.COMMANDS_FUNC.keys()) + " xxx " + self.cmd)
+            logger.info(str(self.COMMANDS_FUNC.keys()) + " xxx " + self.cmd)
             callback("-1004") # TODO: proper error handling
             return
         args = [callback] + self.args
@@ -552,7 +552,7 @@ class RpiProtocol(object):
             #if not all(str(a) for a in self.args):
             #    raise ValueError
         except ValueError:
-            print ("wrong arg type for: %s %s" % (self.cmd, self.args))
+            logger.error ("wrong arg type for: %s %s" % (self.cmd, self.args))
             raise ProtocolError("wrong arg type for: %s %s" % (self.cmd, self.args))
 
 
@@ -620,15 +620,15 @@ class PedalController(object):
 				elif event == ViewEvent.PERIODIC_TICK_2S:
 					self.view.updateConnecting()
 				else:
-					print("Error at line 481")
+					logger.info("Error to the statemachine")
 			elif self.model.viewState == ViewState.PEDALBOARDSELECT:
 				if event == ViewEvent.SHIFT:
 					self.model.change_pedalboards(kwargs['angle'])
 					self.view.updatePedalBoard()
 				else:
-					print("ignored controlShift(state=%s event=%s)" % (self.model.viewState, event))
+					logger.info("ignored controlShift(state=%s event=%s)" % (self.model.viewState, event))
 			else:
-				print("Error at line 483")
+				logger.error("Error to the statemachine")
 		return
 
 	def setup(self, ioloop):
@@ -643,13 +643,13 @@ class PedalController(object):
 		return
 
 	def controlUp(self):
-		print("controlUp is called")
+		logger.info("controlUp is called")
 
 	def controlDown(self):
-		print("controlDown is called")
+		logger.info("controlDown is called")
 
 	def controlLong(self):
-		print("controlLong is called")
+		logger.info("controlLong is called")
 
 
 class PedalModel(object):
@@ -691,43 +691,43 @@ class SocketService(object):
 		return
 
 	def ui_connected(self, callback):
-		print("ignore ui connected")
+		logger.info("ignore ui connected")
 		callback(True)
 
 	def ping(self, callback):
 		callback(True)
 
 	def ui_disconnected(self, callback):
-		print("ignore ui disconnected")
+		logger.info("ignore ui disconnected")
 		callback(True)
 
 	def control_rm(self, callback, instance_id, port):
-		print("ignore control_rm command")
+		logger.info("ignore control_rm command")
 		callback(True)
 
 	def bank_config(self, callback, hw_type, hw_id, actuator_type, actuator_id, action):
-		print("ignore bank_config command")
+		logger.info("ignore bank_config command")
 		callback(True)
 
 	def initial_state(self, callback, bank_id, pedalboard_id, *pedalboards):
-		print("initial_state command bank_id=" + str(bank_id) + " pedalboard_id=" + str(pedalboard_id) + " pedalboards=" + str(pedalboards) )
+		logger.info("initial_state command bank_id=" + str(bank_id) + " pedalboard_id=" + str(pedalboard_id) + " pedalboards=" + str(pedalboards) )
 		self.pedalmodel.set_initial_state( bank_id, pedalboard_id, pedalboards)
 		self.stateMachineController.smNextEvent(ViewEvent.SOCKET_CONNECTED)
 		callback(True)
 
 	def control_add(self, callback, instance_id, port, label, var_type, unit, value, min, max, steps, hw_type, hw_id, actuator_type, actuator_id, n_controllers, index, *options):
-		print("control_add command")
+		logger.info("control_add command")
 		callback(True)
 
 	def control_clean(self, callback, hw_type, hw_id, actuator_type, actuator_id):
-		print("control_clean command")
+		logger.info("control_clean command")
 		callback(True)
 
 	def error_run_callback(self, result):
 		if result == True:
 			self.socket_write(b'resp 0\0')
 		else:
-			print("error_run_callback: " + str(result))
+			logger.error("error_run_callback: " + str(result))
 			self.socket_write(b'resp -1\0')
 			#raise ProtocolError("error_run_callback: %s" % (result))
 
@@ -740,31 +740,31 @@ class SocketService(object):
 		while True:
 			client = TCPClient()
 			try:
-				print("Try to connect to HMI service port=", HMI_SOCKET_PORT)
+				logger.info("Try to connect to HMI service port=%d" % HMI_SOCKET_PORT)
 				self.stream = yield client.connect("localhost", HMI_SOCKET_PORT)
-				print("Connected to HMI")
+				logger.info("Connected to HMI")
 				while True:
 					data = yield self.stream.read_until(b'\0')
-					print(">socketService read: ", data)
+					logger.debug(">socketService read: %s" % str(data))
 					p = RpiProtocol(data.decode('utf-8'))
 					if not p.is_resp():
 						p.run_cmd(self.error_run_callback)
 			except:
 				self.stream = None
-				print("Connection error: ", sys.exc_info()[0])
+				logger.error("Connection error: %s" % sys.exc_info()[0])
 			result = yield gen.sleep(3)
 		return
 
 	@gen.coroutine
 	def socket_write(self, str):
-		print("> send: %s" % str )
+		logger.debug("> send: %s" % str )
 		try:
 			if self.stream:
 				self.stream.write(str, socket_write_success)
 			else:
-				print("socket_write HMI is not connected")
+				logger.error("socket_write HMI is not connected")
 		except:
-			print("socket_write failure error:", sys.exc_info()[0])
+			logger.error("socket_write failure error:", sys.exc_info()[0])
 		return
 
 	def set_pedalboard(self, bank_id, pedalboard_id):
@@ -841,15 +841,15 @@ class NetConsoleServer(TCPServer):
 
 	def setup(self):
 		try:
-			print("NetConsole listens to port %d" % NETCONSOLE_CONSOLE_PORT)
+			logger.info("NetConsole listens to port %d" % NETCONSOLE_CONSOLE_PORT)
 			self.listen(NETCONSOLE_CONSOLE_PORT)
 		except Exception as e:
-			print("ERROR: Failed to open netconsole socket port, error was: %s" % e)
+			logger.error("Failed to open netconsole socket port, error was: %s" % e)
 		return
 
 	@gen.coroutine
 	def handle_stream(self, stream, address):
-		print('[NetConsoleServer] connection from %s' % repr(address))
+		logger.info('[NetConsoleServer] connection from %s' % repr(address))
 		netshell = RotaryEncoderShell(self.controller, stream, stream)
 		netshell.communicationLayer = self.communicationLayer
 		return
@@ -875,7 +875,7 @@ def main():
 	rshell.communicationLayer = ssocket
 	try:
 		main_loop = tornado.ioloop.IOLoop.instance()
-		print("Tornado Server started")
+		logger.info("Tornado Server started")
 		controller.setup(main_loop)
 		lcd.setup(main_loop)
 		ssocket.setup(main_loop)
@@ -883,7 +883,7 @@ def main():
 		netconsole.setup()
 		main_loop.start()
 	except:
-		print("Exception triggered - Tornado Server stopped.")
+		logger.error("Exception triggered - Tornado Server stopped.")
 		traceback.print_exc()
 		GPIO.cleanup()
 		lcd.clear()
