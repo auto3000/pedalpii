@@ -344,7 +344,7 @@ class LCDProxyQueue(object):
 		while True:
 			item = yield self.queue.get()
 			try:
-				logger.debug("len of %s %d" % (item[0], len(item)))
+				#logger.debug("len of %s %d" % (item[0], len(item)))
 				item[1](*item[2:]) #item[1:]
 				#print('Doing work on %s' % func)
 			finally:
@@ -734,6 +734,7 @@ class SocketService(object):
 		ioloop.spawn_callback(self.connectHMILoop)
 		return
 
+
 	@gen.coroutine
 	def connectHMILoop(self):
 		while True:
@@ -741,16 +742,18 @@ class SocketService(object):
 			try:
 				logger.info("Try to connect to HMI service port=%d" % HMI_SOCKET_PORT)
 				self.stream = yield client.connect("localhost", HMI_SOCKET_PORT)
-				logger.info("Connected to HMI")
 				while True:
 					data = yield self.stream.read_until(b'\0')
 					logger.debug(">socketService read: %s" % str(data))
 					p = RpiProtocol(data.decode('utf-8'))
 					if not p.is_resp():
 						p.run_cmd(self.error_run_callback)
-			except:
+			except tornado.iostream.StreamClosedError:
+				pass
+			except Exception as inst:
+				logger.error("Connection error %s" % str(type(inst)), exc_info=True)
 				self.stream = None
-				logger.error("Connection error", exc_info=True)
+
 			result = yield gen.sleep(3)
 		return
 
