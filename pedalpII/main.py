@@ -23,6 +23,9 @@ NETCONSOLE_CONSOLE_PORT = 9998
 
 global logger
 global GPIO
+global enablePhysicalMode
+
+enablePhysicalMode = ("RPI_GPIO_CONNECTED" in os.environ) and (not os.environ["RPI_GPIO_CONNECTED"] in ("0"))
 
 
 def setupLogging():
@@ -81,14 +84,20 @@ class FakeGPIO(object):
 
 def setupGPIOmode():
 	global GPIO
-	try:
-		import RPi.GPIO as GPIO
-	except ImportError:
-		logger.info("No RPi.GPIO detected. pedalpII is not connected to physical devices but console is ready." )
-		GPIO = FakeGPIO()
+	global enablePhysicalMode
+	if enablePhysicalMode:
+		try:
+			import RPi.GPIO as GPIO
+			logger.info("pedalpII is connected to physical devices." )
 
-	#Initialize Raspberry PI GPIO
-	GPIO.setmode(GPIO.BOARD)
+			GPIO.setmode(GPIO.BOARD) #Initialize Raspberry PI GPIO
+
+		except ImportError:
+			logger.error("No RPi.GPIO detected while RPI_GPIO_CONNECTED is defined. pedalpII is not connected to physical devices but console is ready." )
+			GPIO = FakeGPIO()
+	else:
+		logger.info("PEDALPII_GPIO_CONNECTED is false or undefined. pedalpII is not connected to physical devices but console is ready." )
+		GPIO = FakeGPIO()
 	return
 
 # #define LCD_SETCGRAMADDR 0x40
@@ -862,15 +871,21 @@ class NetConsoleServer(TCPServer):
 
 def main():
 	global main_loop, GPIO
+	global enablePhysicalMode
 	setupLogging()
 	setupGPIOmode()
-	hwlcd = FakeLCD()
+	if enablePhysicalMode:
+		encoder = RotaryEncoder(0, 0, 0, rotaryEncoderCallback)
+		hwlcd = LCD( 0, 0, [0, 0, 0, 0])
+	else:
+		encoder = FakeRotaryEncoder(0, 0, 0, rotaryEncoderCallback)
+		hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
 	model = PedalModel()
 	view  = PedalView(model, lcd)
 	controller = PedalController(model, view)
 	rshell = RotaryEncoderShell(controller, PipeIOStream(sys.stdin.fileno()), PipeIOStream(sys.stdout.fileno()))
-	encoder = FakeRotaryEncoder(0, 0, 0, rotaryEncoderCallback)
+
 	ssocket = SocketService(model, controller)
 	model.communicationLayer = ssocket
 	model.stateMachineController = controller
