@@ -177,7 +177,7 @@ class LCD:
 			self.used_gpio.append(pin_rs)
 
 			self.GPIO.setwarnings(False)
-			self.GPIO.setmode(GPIO.BCM)
+			# self.GPIO.setmode(self.GPIO.BCM)
 			self.GPIO.setup(self.pin_e, GPIO.OUT)
 			self.GPIO.setup(self.pin_rs, GPIO.OUT)
 
@@ -186,12 +186,13 @@ class LCD:
 		else:
 			self.GPIO = MyGPIO
 
-		self.writeLock = Lock() # statemachine lock
+		self.writeLock = Lock()
 		self.initDone = False #initialization is done on start() completion
 
 	@gen.coroutine
 	def setup(self):
 		with (yield self.writeLock.acquire()):
+			logger.info("LCD setup is started")
 			self.directWrite4bits(0x33) # initialization
 			self.directWrite4bits(0x32) # initialization
 			self.directWrite4bits(0x28) # 2 line 5x7 matrix
@@ -212,6 +213,8 @@ class LCD:
 			self.delayMicroseconds(3000)	# 3000 microsecond sleep, clearing the display takes a long time
 
 			self.initDone = True
+			logger.info("LCD setup is done")
+
 
 	def begin(self, cols, lines):
 		if (lines > 1):
@@ -344,7 +347,7 @@ class LCD:
 
 	def destroy(self):
 		logger.info("clean up used_gpio")
-		self.GPIO.setmode(GPIO.BCM)
+		self.GPIO.setmode(self.GPIO.BCM)
 		self.GPIO.cleanup(self.used_gpio)
 
 
@@ -356,6 +359,8 @@ class FakeLCD(LCD):
 		self.pin_e = None
 		self.pins_db = [None, None, None, None]
 		self.used_gpio = [None]
+		self.writeLock = Lock()
+		self.initDone = True
 		return
 
 
@@ -364,9 +369,9 @@ class LCDProxyQueue(object):
 	def __init__(self, hwlcd):
 		self.hwlcd = hwlcd
 		self.queue = Queue()
+		self.queue.put_nowait( ("setup", self.hwlcd.setup) )
 
 	def setup(self, ioloop):
-		self.queue.put_nowait( ("setup", self.hwlcd.setup) )
 		ioloop.spawn_callback(self.consumer)
 
 	@gen.coroutine
@@ -487,25 +492,8 @@ class RotaryEncoder:
 	def getSwitchState(self, switch):
 		return  GPIO.input(switch)
 
-class FakeRotaryEncoder(RotaryEncoder):
-	def __init__(self,pinA,pinB,button,callback):
-		self.callback = callback
-		pass
-
-	def getSwitchState(self, switch):
-		return 0
 
 # End of RotaryEncoder class
-
-def asyncRotaryEncoderCallback(event):
-	logger.info("JFD stream.write for event=%s" % str(event))
-	return
-
-
-def rotaryEncoderCallback(event):
-	logger.info("rotaryEncoderCallback with event=%s" % str(event))
-	main_loop.add_callback(callback=lambda: asyncRotaryEncoderCallback(event))
-	return
 
 
 
@@ -585,7 +573,6 @@ class RpiProtocol(object):
             raise ProtocolError("wrong arg type for: %s %s" % (self.cmd, self.args))
 
 
-# FakeRotaryEncoder   ->
 #  RotaryEncoderShell -> PedalController -> PedalModel <-> SocketService
 #                                                       -> FakeLCD
 
@@ -637,6 +624,19 @@ class PedalController(object):
 	def smSubmit_PERIODIC_TICK_2S_Callback(self):
 		self.smNextEvent(ViewEvent.PERIODIC_TICK_2S)
 		return
+
+	def setButtonEvent(self, event):
+		logging.info("setButtonEvent: event=%d" % str(event))
+		if event == RotaryEncoder.CLOCKWISE:
+			self.controlShift(1)
+		elif event == RotaryEncoder.ANTICLOCKWISE:
+			self.controlShift(-1)
+		elif event == RotaryEncoder.BUTTONDOWN:
+			self.controlDown()
+		elif event == RotaryEncoder.BUTTONUP:
+			pass
+		else:
+			logging.error("setButtonEvent: invalid event=%d" % str(event))
 
 	@gen.coroutine
 	def smNextEvent(self, event, **kwargs):
@@ -896,17 +896,16 @@ def main():
 	setupLogging()
 	setupGPIOmode()
 	if enablePhysicalMode:
-		encoder = RotaryEncoder(4, 2, 3, rotaryEncoderCallback)
 		hwlcd = LCD( 26, 19, [13, 6, 0, 5])
 	else:
-		encoder = FakeRotaryEncoder(0, 0, 0, rotaryEncoderCallback)
 		hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
 	model = PedalModel()
 	view  = PedalView(model, lcd)
 	controller = PedalController(model, view)
 	rshell = RotaryEncoderShell(controller, PipeIOStream(sys.stdin.fileno()), PipeIOStream(sys.stdout.fileno()))
-
+	if enablePhysicalMode:
+		encoder = RotaryEncoder(4, 2, 3, controller.setButtonEvent)
 	ssocket = SocketService(model, controller)
 	model.communicationLayer = ssocket
 	model.stateMachineController = controller
