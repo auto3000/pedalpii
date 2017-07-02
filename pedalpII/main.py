@@ -90,13 +90,13 @@ def setupGPIOmode():
 			import RPi.GPIO as GPIO
 			logger.info("pedalpII is connected to physical devices." )
 
-			GPIO.setmode(GPIO.BOARD) #Initialize Raspberry PI GPIO
+			GPIO.setmode(GPIO.BCM) #Initialize Raspberry PI GPIO
 
 		except ImportError:
 			logger.error("No RPi.GPIO detected while RPI_GPIO_CONNECTED is defined. pedalpII is not connected to physical devices but console is ready." )
 			GPIO = FakeGPIO()
 	else:
-		logger.info("PEDALPII_GPIO_CONNECTED is false or undefined. pedalpII is not connected to physical devices but console is ready." )
+		logger.info("RPI_GPIO_CONNECTED is false or undefined. pedalpII is not connected to physical devices but console is ready." )
 		GPIO = FakeGPIO()
 	return
 
@@ -185,22 +185,33 @@ class LCD:
 				self.GPIO.setup(pin, GPIO.OUT)
 		else:
 			self.GPIO = MyGPIO
-		self.write4bits(0x33) # initialization
-		self.write4bits(0x32) # initialization
-		self.write4bits(0x28) # 2 line 5x7 matrix
-		self.write4bits(0x0C) # turn cursor off 0x0E to enable cursor
-		self.write4bits(0x06) # shift cursor right
 
-		self.displaycontrol = self.LCD_DISPLAYON | self.LCD_CURSOROFF | self.LCD_BLINKOFF
+		self.writeLock = Lock() # statemachine lock
+		self.initDone = False #initialization is done on start() completion
 
-		self.displayfunction = self.LCD_4BITMODE | self.LCD_1LINE | self.LCD_5x8DOTS
-		self.displayfunction |= self.LCD_2LINE
+	@gen.coroutine
+	def setup(self):
+		with (yield self.writeLock.acquire()):
+			self.directWrite4bits(0x33) # initialization
+			self.directWrite4bits(0x32) # initialization
+			self.directWrite4bits(0x28) # 2 line 5x7 matrix
+			self.directWrite4bits(0x0C) # turn cursor off 0x0E to enable cursor
+			self.directWrite4bits(0x06) # shift cursor right
 
-		""" Initialize to default text direction (for romance languages) """
-		self.displaymode =  self.LCD_ENTRYLEFT | self.LCD_ENTRYSHIFTDECREMENT
-		self.write4bits(self.LCD_ENTRYMODESET | self.displaymode) #  set the entry mode
+			self.displaycontrol = self.LCD_DISPLAYON | self.LCD_CURSOROFF | self.LCD_BLINKOFF
 
-		self.clear()
+			self.displayfunction = self.LCD_4BITMODE | self.LCD_1LINE | self.LCD_5x8DOTS
+			self.displayfunction |= self.LCD_2LINE
+
+			""" Initialize to default text direction (for romance languages) """
+			self.displaymode =  self.LCD_ENTRYLEFT | self.LCD_ENTRYSHIFTDECREMENT
+			self.directWrite4bits(self.LCD_ENTRYMODESET | self.displaymode) #  set the entry mode
+
+			#self.clear()
+			self.directWrite4bits(self.LCD_CLEARDISPLAY) # command to clear display
+			self.delayMicroseconds(3000)	# 3000 microsecond sleep, clearing the display takes a long time
+
+			self.initDone = True
 
 	def begin(self, cols, lines):
 		if (lines > 1):
@@ -282,7 +293,15 @@ class LCD:
 		self.displaymode &= ~self.LCD_ENTRYSHIFTINCREMENT
 		self.write4bits(self.LCD_ENTRYMODESET | self.displaymode)
 
+	@gen.coroutine
 	def write4bits(self, bits, char_mode=False):
+		with (yield self.writeLock.acquire()):
+			if self.initDone:
+				self.directWrite4bits(bits, char_mode)
+			else:
+				logger.error("write4bits has been called while LCD initDone = False")
+
+	def directWrite4bits(self, bits, char_mode=False):
 		# Send command to LCD
 		self.delayMicroseconds(1000) # 1000 microsecond sleep
 		bits=bin(bits)[2:].zfill(8)
@@ -325,6 +344,7 @@ class LCD:
 
 	def destroy(self):
 		logger.info("clean up used_gpio")
+		self.GPIO.setmode(GPIO.BCM)
 		self.GPIO.cleanup(self.used_gpio)
 
 
@@ -346,6 +366,7 @@ class LCDProxyQueue(object):
 		self.queue = Queue()
 
 	def setup(self, ioloop):
+		self.queue.put_nowait( ("setup", self.hwlcd.setup) )
 		ioloop.spawn_callback(self.consumer)
 
 	@gen.coroutine
@@ -391,7 +412,7 @@ class RotaryEncoder:
 		self.button = button
 		self.callback = callback
 
-		#GPIO.setmode(GPIO.BCM)
+		GPIO.setmode(GPIO.BCM)
 
 		# The following lines enable the internal pull-up resistors
 		# on version 2 (latest) boards
@@ -641,7 +662,7 @@ class PedalController(object):
 
 	def setup(self, ioloop):
 		self.model.viewState = ViewState.CONNECTING
-		self.smNextEvent(ViewEvent.PERIODIC_TICK_2S) # Display connecting... first time
+		ioloop.add_callback(self.smNextEvent, ViewEvent.PERIODIC_TICK_2S)	 # Display connecting... first time
 		self.periodic_PERIODIC_TICK_2S_Callback = tornado.ioloop.PeriodicCallback(self.smSubmit_PERIODIC_TICK_2S_Callback, 2000)
 		self.periodic_PERIODIC_TICK_2S_Callback.start()
 		return
@@ -875,8 +896,8 @@ def main():
 	setupLogging()
 	setupGPIOmode()
 	if enablePhysicalMode:
-		encoder = RotaryEncoder(0, 0, 0, rotaryEncoderCallback)
-		hwlcd = LCD( 0, 0, [0, 0, 0, 0])
+		encoder = RotaryEncoder(4, 2, 3, rotaryEncoderCallback)
+		hwlcd = LCD( 26, 19, [13, 6, 0, 5])
 	else:
 		encoder = FakeRotaryEncoder(0, 0, 0, rotaryEncoderCallback)
 		hwlcd = FakeLCD()
@@ -893,8 +914,8 @@ def main():
 	try:
 		main_loop = tornado.ioloop.IOLoop.instance()
 		logger.info("Tornado Server started")
-		controller.setup(main_loop)
 		lcd.setup(main_loop)
+		controller.setup(main_loop)
 		ssocket.setup(main_loop)
 		netconsole = NetConsoleServer(main_loop, controller, ssocket)
 		netconsole.setup()
