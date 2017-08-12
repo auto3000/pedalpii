@@ -62,7 +62,7 @@ def setupLogging():
 
 class FakeGPIO(object):
 	BOARD = -1
-
+	BCM = -1
 	def output(self, a,b):
 		pass
 
