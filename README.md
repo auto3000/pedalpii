@@ -1,7 +1,7 @@
 # pedalpII
-Physical (button/LCD) and console interfaces for the pedalpII (aka pedalpi v2).
+pedalpi is an affordable but complete computer-based pedalboard for guitar/bass.
 
-pedalpII is a monolithic script to control the sound effects from input GPIOs of the Raspberry Pi. pedalpII considers a physical pedal with a LCD 16x2 to display current pedalboard effects, a rotation encoder to control pedal effects and a true bypass switch.
+This code implements the physical (button/LCD) and console interfaces for the pedalpII (aka pedalpi v2). pedalpII is a monolithic script to control the sound effects from input GPIOs of the Raspberry Pi. pedalpII considers a physical pedal with a LCD 16x2 to display current pedalboard effects, a rotation encoder to select pedal effects and a true bypass switch.
 
 The total cost for this hardware is targeted under 150$. The main cost are the Prodipe Studio 22 USB sound card (80$), the Raspberry Pi 2/3 (40$), and the Hammond 1590DD aluminium box (20$). Remaining furnitures are under 10$: one 1602 LCD display, one MF-A04 bakelite knob, two 1/4 mono jack plug audio connector, two 1/4 jack socket connector female panel mount, and one 3PDT switch true bypass.
 
@@ -46,8 +46,9 @@ pedalpII relies on MOD infrastructure. MOD did not exist when pedalpI was develo
 
 ## Future of pedalpIII
 
-pedalpIII (aka pedalpi v3) is intended to be an hardware rebase from pedalpII. There are two technical paths:
-1- replace the costly USB sound card for a cheaper sound card, like Audio Injector (25$) to reach a 100$ budget 
-2- add a second audio input and a second audio output from the actual USB sound card
-3- both 1 and 2
-4- additional buttons or additional physical commands like expression pedal for wahwah
+In the short term, pedalpIII (aka pedalpi v3) is intended to be an hardware rebase from pedalpII for more affordable components. 
+- The total cost for this hardware is targeted under 60$. The main cost are the NanoPi Neo Air (30$) that include an onboard, and the Hammond 1590DD aluminium box (20$). Remaining furnitures are under 10$: one 1602 LCD display, one MF-A04 bakelite knob, two 1/4 mono jack plug audio connector, two 1/4 jack socket connector female panel mount, and one 3PDT switch true bypass.
+
+In the long term, ideas are welcome:
+ - Supports stereo pedal effects with a second audio input and a second audio output
+ - Supports for additional buttons or additional physical commands like expression pedal for wahwah
