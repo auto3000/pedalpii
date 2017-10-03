@@ -17,6 +17,7 @@ import csv
 from tornado.queues import Queue
 import logging
 import logging.handlers
+from time import sleep
 
 HMI_SOCKET_PORT = 9999
 NETCONSOLE_CONSOLE_PORT = 9998
@@ -186,6 +187,7 @@ class LCD:
 			self.GPIO = MyGPIO
 
 		self.writeLock = Lock()
+		self.setTornadoWorld( True )
 		self.initDone = False #initialization is done on start() completion
 
 	@gen.coroutine
@@ -321,11 +323,23 @@ class LCD:
 				self.GPIO.output(self.pins_db[::-1][i-4], True)
 		self.pulseEnable()
 
-	@gen.coroutine
+	def setTornadoWorld(self, status):
+		self.tornadoWorld = status
+
 	def delayMicroseconds(self, microseconds):
 		seconds = microseconds / float(1000000)	# divide microseconds by 1 million for seconds
+		if self.tornadoWorld:
+			self.delayInTornadoWorld(seconds)
+		else:
+			self.delayInNormalWorld(seconds)
+
+	@gen.coroutine
+	def delayInTornadoWorld(self, seconds):
 		result = yield gen.sleep(seconds)
 		return result
+
+	def delayInNormalWorld(self, seconds):
+		sleep(seconds)
 
 	def pulseEnable(self):
 		self.GPIO.output(self.pin_e, False)
@@ -345,7 +359,7 @@ class LCD:
 				self.write4bits(ord(char),True)
 
 	def destroy(self):
-		logger.info("clean up used_gpio")
+		logger.info("LCD clean up used_gpio")
 		self.GPIO.setmode(self.GPIO.BOARD)
 		self.GPIO.cleanup(self.used_gpio)
 
@@ -358,6 +372,7 @@ class FakeLCD(LCD):
 		self.pin_e = None
 		self.pins_db = [None, None, None, None]
 		self.used_gpio = [None]
+		self.setTornadoWorld( True )
 		self.writeLock = Lock()
 		self.initDone = True
 		return
@@ -391,6 +406,7 @@ class LCDProxyQueue(object):
 
 	def clear(self):
 		GPIO.setmode(GPIO.BOARD)
+		self.hwlcd.setTornadoWorld(False)
 		self.hwlcd.clear()
 		self.hwlcd.message("PEDALP II\nSHUTDOWN...")
 
