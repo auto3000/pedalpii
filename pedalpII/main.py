@@ -90,7 +90,7 @@ def setupGPIOmode():
 			import RPi.GPIO as GPIO
 			logger.info("pedalpII is connected to physical devices." )
 
-			GPIO.setmode(GPIO.BCM) #Initialize Raspberry PI GPIO
+			GPIO.setmode(GPIO.BOARD) #Initialize Raspberry PI GPIO
 
 		except ImportError:
 			logger.error("No RPi.GPIO detected while RPI_GPIO_CONNECTED is defined. pedalpII is not connected to physical devices but console is ready." )
@@ -177,7 +177,6 @@ class LCD:
 			self.used_gpio.append(pin_rs)
 
 			self.GPIO.setwarnings(False)
-			# self.GPIO.setmode(self.GPIO.BCM)
 			self.GPIO.setup(self.pin_e, GPIO.OUT)
 			self.GPIO.setup(self.pin_rs, GPIO.OUT)
 
@@ -347,7 +346,7 @@ class LCD:
 
 	def destroy(self):
 		logger.info("clean up used_gpio")
-		self.GPIO.setmode(self.GPIO.BCM)
+		self.GPIO.setmode(self.GPIO.BOARD)
 		self.GPIO.cleanup(self.used_gpio)
 
 
@@ -376,6 +375,7 @@ class LCDProxyQueue(object):
 
 	@gen.coroutine
 	def consumer(self):
+		GPIO.setmode(GPIO.BOARD)
 		while True:
 			item = yield self.queue.get()
 			try:
@@ -386,10 +386,13 @@ class LCDProxyQueue(object):
 				self.queue.task_done()
 
 	def message(self, text):
+		self.queue.put_nowait( ("clear", self.hwlcd.clear) )
 		self.queue.put_nowait( ("message", self.hwlcd.message, text) )
 
 	def clear(self):
-		self.queue.put_nowait( ("clear", self.hwlcd.clear) )
+		GPIO.setmode(GPIO.BOARD)
+		self.hwlcd.clear()
+		self.hwlcd.message("PEDALP II\nSHUTDOWN...")
 
 	def destroy(self):
 		self.hwlcd.destroy()
@@ -417,14 +420,14 @@ class RotaryEncoder:
 		self.button = button
 		self.callback = callback
 
-		GPIO.setmode(GPIO.BCM)
+		GPIO.setmode(GPIO.BOARD)
 
 		# The following lines enable the internal pull-up resistors
 		# on version 2 (latest) boards
-		GPIO.setwarnings(False)
-		GPIO.setup(self.pinA, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-		GPIO.setup(self.pinB, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-		GPIO.setup(self.button, GPIO.IN, pull_up_down=GPIO.PUD_UP) #sure ?
+		GPIO.setwarnings(True)
+		GPIO.setup(self.pinA, GPIO.IN) #, pull_up_down=GPIO.PUD_UP)
+		GPIO.setup(self.pinB, GPIO.IN) #, pull_up_down=GPIO.PUD_UP)
+		GPIO.setup(self.button, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 		# For version 1 (old) boards comment out the above four lines
 		# and un-comment the following 3 lines
@@ -433,19 +436,21 @@ class RotaryEncoder:
 		#GPIO.setup(self.button, GPIO.IN)
 
 		# Add event detection to the GPIO inputs
-		GPIO.add_event_detect(self.pinA, GPIO.FALLING, callback=self.switch_event)
-		GPIO.add_event_detect(self.pinB, GPIO.FALLING, callback=self.switch_event)
-		GPIO.add_event_detect(self.button, GPIO.BOTH, callback=self.button_event, bouncetime=200)
+		GPIO.add_event_detect(self.pinA, GPIO.BOTH, callback=self.switch_event)#, bouncetime=1000)
+		GPIO.add_event_detect(self.pinB, GPIO.BOTH, callback=self.switch_event)#, bouncetime=500)
+		GPIO.add_event_detect(self.button, GPIO.BOTH, callback=self.button_event)#, bouncetime=1000)
 		return
 
 	# Call back routine called by switch events
 	def switch_event(self,switch):
-		if GPIO.input(self.pinA):
+		valA = GPIO.input(self.pinA)
+		valB = GPIO.input(self.pinB)
+		if valA:
 			self.rotary_a = 1
 		else:
 			self.rotary_a = 0
 
-		if GPIO.input(self.pinB):
+		if valB:
 			self.rotary_b = 1
 		else:
 			self.rotary_b = 0
@@ -457,17 +462,17 @@ class RotaryEncoder:
 		self.last_state = new_state
 		event = 0
 
-#		print delta1 , " - priv: " , self.privDirection
+		logger.info ( "switch_event " + str(delta1) + " - privDirection: " + str(self.privDirection) + " a="   + str(self.rotary_a) + " b=" + str(self.rotary_b))
 		if delta1 == 1:
 			if self.direction == self.CLOCKWISE:
-				# print "Clockwise"
+				logger.info("Clockwise")
 #				if self.privDirection == self.CLOCKWISE:
 				event = self.direction
 			else:
 				self.direction = self.CLOCKWISE
 		elif delta1 == 3:
 			if self.direction == self.ANTICLOCKWISE:
-				# print "Anticlockwise"
+				logger.info("Anticlockwise")
 #				if self.privDirection == self.ANTICLOCKWISE:
 				event = self.direction
 			else:
@@ -481,6 +486,7 @@ class RotaryEncoder:
 
 	# Push button up event
 	def button_event(self,button):
+		logger.info('button_event');
 		if GPIO.input(button):
 			event = self.BUTTONUP
 		else:
@@ -594,24 +600,23 @@ class PedalView(object):
 		self.welcome_banner_state = 0
 		self.model = model
 		self.lcd = lcd
-		self.lcd.clear()
-		self.lcd.message("WELCOME TO --->\n  PEDALP II")
+		self.lcd.message("PEDALP II       \nINITIALIZING    ")
 		return
 
 	def updateConnecting(self):
 		if self.model.viewState == ViewState.CONNECTING:
 			if self.welcome_banner_state == 0:
-				self.lcd.message("PEDALP II WELCOME\nCONNECTING......")
+				self.lcd.message("PEDALP II       \nCONNECTING......")
 				self.welcome_banner_state = 1
 			else:
-				self.lcd.message("PEDALP II WELCOME\nCONNECTING...")
+				self.lcd.message("PEDALP II       \nCONNECTING...   ")
 				self.welcome_banner_state = 0
 		return
 
 	def updatePedalBoard(self):
 		if self.model.viewState == ViewState.PEDALBOARDSELECT:
 			new_pedalboard = (self.model.pedalboard_id + 1) % (self.model.pedalboards_len + 1)
-			self.lcd.message("SELECT BOARD %02d\n%16s" % (new_pedalboard, self.model.pedalboards[self.model.pedalboard_id]))
+			self.lcd.message("SELECT BOARD %03d\n%16s" % (new_pedalboard, self.model.pedalboards[self.model.pedalboard_id]))
 		return
 
 class PedalController(object):
@@ -626,7 +631,14 @@ class PedalController(object):
 		return
 
 	def setButtonEvent(self, event):
-		logging.info("setButtonEvent: event=%d" % str(event))
+		logger.info ('setButtonEvent entry')
+		if hasattr(self, 'ioloop'):
+			logger.info ('setButtonEvent entry')
+			self.ioloop.add_callback(self.setButtonEventIOLOOP, event)
+
+	@gen.coroutine
+	def setButtonEventIOLOOP(self, event):
+		logging.info("setButtonEvent: event=%s" % str(event))
 		if event == RotaryEncoder.CLOCKWISE:
 			self.controlShift(1)
 		elif event == RotaryEncoder.ANTICLOCKWISE:
@@ -662,7 +674,8 @@ class PedalController(object):
 
 	def setup(self, ioloop):
 		self.model.viewState = ViewState.CONNECTING
-		ioloop.add_callback(self.smNextEvent, ViewEvent.PERIODIC_TICK_2S)	 # Display connecting... first time
+		self.ioloop = ioloop
+		self.ioloop.add_callback(self.smNextEvent, ViewEvent.PERIODIC_TICK_2S)	 # Display connecting... first time
 		self.periodic_PERIODIC_TICK_2S_Callback = tornado.ioloop.PeriodicCallback(self.smSubmit_PERIODIC_TICK_2S_Callback, 2000)
 		self.periodic_PERIODIC_TICK_2S_Callback.start()
 		return
@@ -896,7 +909,7 @@ def main():
 	setupLogging()
 	setupGPIOmode()
 	if enablePhysicalMode:
-		hwlcd = LCD( 26, 19, [13, 6, 0, 5])
+		hwlcd = LCD( 8, 10, [12, 16, 18, 22])
 	else:
 		hwlcd = FakeLCD()
 	lcd = LCDProxyQueue(hwlcd)
@@ -905,7 +918,7 @@ def main():
 	controller = PedalController(model, view)
 	rshell = RotaryEncoderShell(controller, PipeIOStream(sys.stdin.fileno()), PipeIOStream(sys.stdout.fileno()))
 	if enablePhysicalMode:
-		encoder = RotaryEncoder(4, 2, 3, controller.setButtonEvent)
+		encoder = RotaryEncoder(3, 5, 11, controller.setButtonEvent)
 	ssocket = SocketService(model, controller)
 	model.communicationLayer = ssocket
 	model.stateMachineController = controller
@@ -921,9 +934,9 @@ def main():
 		main_loop.start()
 	except:
 		logger.error("Exception triggered - Tornado Server stopped.", exc_info=True)
-		GPIO.cleanup()
 		lcd.clear()
 		lcd.destroy()
+		GPIO.cleanup()
 
 if __name__ == "__main__":
 	main()
