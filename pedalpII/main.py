@@ -829,7 +829,7 @@ class SocketService(object):
 		return
 
 	def set_pedalboard(self, bank_id, pedalboard_id):
-		self.socket_write("pedalboard {0} {0}\0".format(bank_id, pedalboard_id).encode('ascii'));
+		self.socket_write("pedalboard {} {}\0".format(bank_id, pedalboard_id).encode('ascii'));
 		return
 
 
