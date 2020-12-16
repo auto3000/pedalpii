@@ -521,21 +521,24 @@ class RotaryEncoder:
 
 class RpiProtocol(object):
     COMMANDS = {
-        "ping": [],
-        "control_rm": [int, str],
-        "ui_dis": [],
-        "ui_con": [],
-        "bank_config": [int, int, int, int, int], #hw_type, hw_id, actuator_type, actuator_id, action
-        "initial_state": [int, int, str], # bank_id, pedalboard_id, pedalboards #variadic couple 0 str0 1 str1 ...
-        "control_add": [int, str, str, int, str, float, float, float, int, int, int, int, int, int, int ],
-		"control_clean": [int, int, int, int]
-		# instance_id, port, label, var_type, unit, value, min, max, steps, hw_type, hw_id, actuator_type, actuator_id, n_controllers, index, options
+        "pi": [],
+        "pcl": [],
+        "ud": [],
+        "uc": [],
+        "bc": [int, int], #hw_id, action
+        "is": [int, int, int, int, int, str], # bank_id, pedalboard_id, pedalboards #variadic couple 0 str0 1 str1 ...
+        "c": [str], # ignored
+        "s": [str], # ignored
+        "a": [str], # ignored
+        "d": [str], # ignored
+        "pn": [str], # name
+        # instance_id, port, label, var_type, unit, value, min, max, steps, hw_type, hw_id, actuator_type, actuator_id, n_controllers, index, options
     }
 
     COMMANDS_FUNC = {}
 
     RESPONSES = [
-        "resp", "few aguments", "many arguments", "not found"
+        "r ", "few aguments", "many arguments", "not found"
     ]
 
     @classmethod
@@ -567,8 +570,8 @@ class RpiProtocol(object):
         self.COMMANDS_FUNC[self.cmd](*args)
 
     def process_resp(self, datatype):
-        if "resp" in self.msg:
-            resp = self.msg.replace("resp ", "")
+        if "r " in self.msg:
+            resp = self.msg.replace("r ", "")
             return process_resp(resp, datatype)
         return self.msg
 
@@ -580,7 +583,7 @@ class RpiProtocol(object):
         for line in csv.reader([self.msg], delimiter=' ', quotechar='"'):
             cmd = line
         if not cmd or cmd[0] not in self.COMMANDS.keys():
-            raise ProtocolError("not found") # Command not found
+            raise Exception("not found cmd=%s" % cmd) # Command not found
 
         try:
             self.cmd = cmd[0]
@@ -592,7 +595,7 @@ class RpiProtocol(object):
             #    raise ValueError
         except ValueError:
             logger.error ("wrong arg type for: %s %s" % (self.cmd, self.args))
-            raise ProtocolError("wrong arg type for: %s %s" % (self.cmd, self.args))
+            raise Exception("wrong arg type for: %s %s" % (self.cmd, self.args))
 
 
 #  RotaryEncoderShell -> PedalController -> PedalModel <-> SocketService
@@ -604,7 +607,7 @@ ViewState = Enum('ViewState', 'CONNECTING '
 							'PEDALBOARDSELECT '
 							'EFFECTSELECT '
 							'LCDLIGHT ')
-ViewEvent = Enum('ViewEvent',  'PERIODIC_TICK_2S SOCKET_CONNECTED SHIFT ')
+ViewEvent = Enum('ViewEvent',  'PERIODIC_TICK_2S SOCKET_CONNECTED SHIFT UPDATE_PEDALBOARD')
 
 # empty socket.write callback
 def socket_write_success():
@@ -654,7 +657,7 @@ class PedalController(object):
 
 	@gen.coroutine
 	def setButtonEventIOLOOP(self, event):
-		logging.info("setButtonEvent: event=%s" % str(event))
+		logger.info("setButtonEvent: event=%s" % str(event))
 		if event == RotaryEncoder.CLOCKWISE:
 			self.controlShift(1)
 		elif event == RotaryEncoder.ANTICLOCKWISE:
@@ -664,7 +667,7 @@ class PedalController(object):
 		elif event == RotaryEncoder.BUTTONUP:
 			pass
 		else:
-			logging.error("setButtonEvent: invalid event=%d" % str(event))
+			logger.error("setButtonEvent: invalid event=%d" % str(event))
 
 	@gen.coroutine
 	def smNextEvent(self, event, **kwargs):
@@ -681,6 +684,8 @@ class PedalController(object):
 			elif self.model.viewState == ViewState.PEDALBOARDSELECT:
 				if event == ViewEvent.SHIFT:
 					self.model.change_pedalboards(kwargs['angle'])
+					self.view.updatePedalBoard()
+				elif event == ViewEvent.UPDATE_PEDALBOARD:
 					self.view.updatePedalBoard()
 				else:
 					logger.info("ignored controlShift(state=%s event=%s)" % (self.model.viewState, event))
@@ -716,6 +721,7 @@ class PedalModel(object):
 		self.communicationLayer = None # it must be set after construction asap
 		self.stateMachineController = None # it must be set after construction asap
 		self.viewState = ViewState.CONNECTING
+		self.pedalboards = []
 		return
 
 	def change_pedalboards(self, counter):
@@ -723,29 +729,39 @@ class PedalModel(object):
 		self.communicationLayer.set_pedalboard(self.bank_id, self.pedalboard_id)
 		return
 
-	def set_initial_state(self, bank_id, pedalboard_id, pedalboards):
+	def set_state(self, pedalboard_name):
+		try:
+			self.pedalboard_id = self.pedalboards.index(pedalboard_name)
+		except ValueError:
+			logger.error("set_state: pedalboard_name=%s does not exist in registered pedalboards" % pedalboard_name)
+			self.pedalboard_id = 0
+
+	def set_initial_state(self, numPedals, startIndex, endIndex, bank_id, pedalboard_id, pedalboards_str):
 		self.bank_id = int(bank_id)
 		self.pedalboard_id = 0 #Force pedalboard to first entry
-		self.pedalboards_len = max(int(pedalboard_id) - 1, 1) # ignore the last entry DEFAULT if we have more than one pedalboard.
-		self.pedalboards = []
-		for i in range(0, self.pedalboards_len): # recopy only text elements
-			self.pedalboards = self.pedalboards + [ pedalboards[2*i] ]
-		self.change_pedalboards(0)
-		return
+		self.pedalboards_len = max(int(numPedals) - 1, 1) # ignore the last entry DEFAULT if we have more than one pedalboard.
+		if len(self.pedalboards) != self.pedalboards_len:
+			self.pedalboards = [None] * self.pedalboards_len
+		for i in range(0, int(endIndex) - int(startIndex) - 1): # recopy only text elements
+			self.pedalboards[int(startIndex) + i] = pedalboards_str[2*i]
+		self.change_pedalboards(int(pedalboard_id))
 
 class SocketService(object):
 	def __init__(self, pedalmodel, stateMachineController):
 		self.pedalmodel = pedalmodel
 		self.stateMachineController = stateMachineController
 		self.stream = None
-		RpiProtocol.register_cmd_callback("ping", self.ping)
-		RpiProtocol.register_cmd_callback("ui_con", self.ui_connected)
-		RpiProtocol.register_cmd_callback("ui_dis", self.ui_disconnected)
-		RpiProtocol.register_cmd_callback("control_rm", self.control_rm)
-		RpiProtocol.register_cmd_callback("bank_config", self.bank_config)
-		RpiProtocol.register_cmd_callback("initial_state", self.initial_state)
-		RpiProtocol.register_cmd_callback("control_add", self.control_add)
-		RpiProtocol.register_cmd_callback("control_clean", self.control_clean)
+		RpiProtocol.register_cmd_callback("pi", self.ping)
+		RpiProtocol.register_cmd_callback("pcl", self.pcl)
+		RpiProtocol.register_cmd_callback("uc", self.ui_connected)
+		RpiProtocol.register_cmd_callback("ud", self.ui_disconnected)
+		RpiProtocol.register_cmd_callback("bc", self.bank_config)
+		RpiProtocol.register_cmd_callback("is", self.initial_state)
+		RpiProtocol.register_cmd_callback("a", self.control_add)
+		RpiProtocol.register_cmd_callback("d", self.control_clean)
+		RpiProtocol.register_cmd_callback("s", self.control_set)
+		RpiProtocol.register_cmd_callback("c", self.menu_item_change)
+		RpiProtocol.register_cmd_callback("pn", self.pedalboard_name_set)
 		return
 
 	def ui_connected(self, callback):
@@ -755,39 +771,53 @@ class SocketService(object):
 	def ping(self, callback):
 		callback(True)
 
+	def pcl(self, callback):
+		logger.info("ignore pedalboard clear")
+		callback(True)
+
 	def ui_disconnected(self, callback):
 		logger.info("ignore ui disconnected")
 		callback(True)
 
-	def control_rm(self, callback, instance_id, port):
-		logger.info("ignore control_rm command")
-		callback(True)
-
-	def bank_config(self, callback, hw_type, hw_id, actuator_type, actuator_id, action):
+	def bank_config(self, callback, hw_type, hw_id):
 		logger.info("ignore bank_config command")
 		callback(True)
 
-	def initial_state(self, callback, bank_id, pedalboard_id, *pedalboards):
+	def pedalboard_name_set(self, callback, *name):
+		pedalboard_name = " ".join(name)
+		logger.info("pedalboard_name_set name=" + pedalboard_name)
+		self.pedalmodel.set_state(pedalboard_name)
+		self.stateMachineController.smNextEvent(ViewEvent.UPDATE_PEDALBOARD)
+		callback(True)
+
+	def initial_state(self, callback, numPedals, startIndex, endIndex, bank_id, pedalboard_id, *pedalboards):
 		logger.info("initial_state command bank_id=" + str(bank_id) + " pedalboard_id=" + str(pedalboard_id) + " pedalboards=" + str(pedalboards) )
-		self.pedalmodel.set_initial_state( bank_id, pedalboard_id, pedalboards)
+		self.pedalmodel.set_initial_state( numPedals, startIndex, endIndex, bank_id, pedalboard_id, pedalboards)
 		self.stateMachineController.smNextEvent(ViewEvent.SOCKET_CONNECTED)
 		callback(True)
 
-	def control_add(self, callback, instance_id, port, label, var_type, unit, value, min, max, steps, hw_type, hw_id, actuator_type, actuator_id, n_controllers, index, *options):
-		logger.info("control_add command")
+	def control_add(self, callback, *arg):
+		logger.info("ignore control_add command")
 		callback(True)
 
-	def control_clean(self, callback, hw_type, hw_id, actuator_type, actuator_id):
-		logger.info("control_clean command")
+	def control_clean(self, callback, *arg):
+		logger.info("ignore control_clean command")
+		callback(True)
+
+	def control_set(self, callback, *arg):
+		logger.info("ignore control_set command")
+		callback(True)
+
+	def menu_item_change(self, callback, *arg):
+		logger.info("ignore menu_item_change command")
 		callback(True)
 
 	def error_run_callback(self, result):
 		if result == True:
-			self.socket_write(b'resp 0\0')
+			self.socket_write(b'r 0\0')
 		else:
 			logger.error("error_run_callback: " + str(result))
-			self.socket_write(b'resp -1\0')
-			#raise ProtocolError("error_run_callback: %s" % (result))
+			self.socket_write(b'r -1\0')
 
 	def setup(self, ioloop):
 		ioloop.spawn_callback(self.connectHMILoop)
@@ -829,7 +859,7 @@ class SocketService(object):
 		return
 
 	def set_pedalboard(self, bank_id, pedalboard_id):
-		self.socket_write("pedalboard {} {}\0".format(bank_id, pedalboard_id).encode('ascii'));
+		self.socket_write("pb {} {}\0".format(bank_id, pedalboard_id).encode('ascii'));
 		return
 
 
